@@ -35,6 +35,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"runtime/trace"
 	"sync"
@@ -51,6 +52,7 @@ import (
 	"github.com/tikv/client-go/v2/metrics"
 	"github.com/tikv/client-go/v2/tikvrpc"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -191,6 +193,7 @@ type batchConn struct {
 	idleNotify *uint32
 	idleDetect *time.Timer
 
+	spans           []minitrace.SpanHandle
 	pendingRequests prometheus.Observer
 	batchSize       prometheus.Observer
 
@@ -237,7 +240,17 @@ func (a *batchConn) fetchAllPendingRequests(
 	if headEntry == nil {
 		return time.Now()
 	}
+
 	ts := time.Now()
+
+	defer func() {
+		for _, span := range a.spans {
+			span.Finish()
+		}
+		a.spans = a.spans[:0]
+	}()
+
+	a.spans = append(a.spans, minitrace.StartSpan(headEntry.ctx, "batchConn.fetchAllPendingRequests"))
 	a.reqBuilder.push(headEntry)
 
 	// This loop is for trying best to collect more requests.
@@ -247,6 +260,7 @@ func (a *batchConn) fetchAllPendingRequests(
 			if entry == nil {
 				return ts
 			}
+			a.spans = append(a.spans, minitrace.StartSpan(entry.ctx, "batchConn.fetchAllPendingRequests"))
 			a.reqBuilder.push(entry)
 		default:
 			return ts
@@ -261,6 +275,13 @@ func (a *batchConn) fetchMorePendingRequests(
 	batchWaitSize int,
 	maxWaitTime time.Duration,
 ) {
+	defer func() {
+		for _, span := range a.spans {
+			span.Finish()
+		}
+		a.spans = a.spans[:0]
+	}()
+
 	// Try to collect `batchWaitSize` requests, or wait `maxWaitTime`.
 	after := time.NewTimer(maxWaitTime)
 	for a.reqBuilder.len() < batchWaitSize {
@@ -269,6 +290,7 @@ func (a *batchConn) fetchMorePendingRequests(
 			if entry == nil {
 				return
 			}
+			a.spans = append(a.spans, minitrace.StartSpan(entry.ctx, "batchConn.fetchAllPendingRequests"))
 			a.reqBuilder.push(entry)
 		case <-after.C:
 			return
@@ -285,6 +307,7 @@ func (a *batchConn) fetchMorePendingRequests(
 			if entry == nil {
 				return
 			}
+			a.spans = append(a.spans, minitrace.StartSpan(entry.ctx, "batchConn.fetchAllPendingRequests"))
 			a.reqBuilder.push(entry)
 		default:
 			return
@@ -369,7 +392,16 @@ func (a *batchConn) getClientAndSend() {
 	}
 	defer cli.unlockForSend()
 
+	defer func() {
+		for _, span := range a.spans {
+			span.Finish()
+		}
+		a.spans = a.spans[:0]
+	}()
+
+	traceEvent := fmt.Sprintf("batchConn.getClientAndSend, batch size: %d", a.reqBuilder.len())
 	req, forwardingReqs := a.reqBuilder.build(func(id uint64, e *batchCommandsEntry) {
+		a.spans = append(a.spans, minitrace.StartSpan(e.ctx, traceEvent))
 		cli.batched.Store(id, e)
 		if trace.IsEnabled() {
 			trace.Log(e.ctx, "rpc", "send")
@@ -614,6 +646,7 @@ func (c *batchCommandsClient) batchRecvLoop(cfg config.TiKVClient, tikvTransport
 		}
 
 		responses := resp.GetResponses()
+		traceEvent := fmt.Sprintf("batchCommandsClient.batchRecv, batch size: %d", len(responses))
 		for i, requestID := range resp.GetRequestIds() {
 			value, ok := c.batched.Load(requestID)
 			if !ok {
@@ -623,6 +656,7 @@ func (c *batchCommandsClient) batchRecvLoop(cfg config.TiKVClient, tikvTransport
 				continue
 			}
 			entry := value.(*batchCommandsEntry)
+			span := minitrace.StartSpan(entry.ctx, traceEvent)
 
 			if trace.IsEnabled() {
 				trace.Log(entry.ctx, "rpc", "received")
@@ -633,6 +667,7 @@ func (c *batchCommandsClient) batchRecvLoop(cfg config.TiKVClient, tikvTransport
 				entry.res <- responses[i]
 			}
 			c.batched.Delete(requestID)
+			span.Finish()
 		}
 
 		transportLayerLoad := resp.GetTransportLayerLoad()

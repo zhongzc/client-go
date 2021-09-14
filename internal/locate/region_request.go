@@ -60,6 +60,7 @@ import (
 	"github.com/tikv/client-go/v2/oracle"
 	"github.com/tikv/client-go/v2/tikvrpc"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 )
 
 // shuttingDown is a flag to indicate tidb-server is exiting (Ctrl+C signal
@@ -474,6 +475,9 @@ func (s *RegionRequestSender) SendReqCtx(
 		defer span1.Finish()
 		bo.SetCtx(opentracing.ContextWithSpan(bo.GetCtx(), span1))
 	}
+	ctx1, span := minitrace.StartSpanWithContext(bo.GetCtx(), "regionRequest.SendReqCtx")
+	bo.SetCtx(ctx1)
+	defer span.Finish()
 
 	if val, err := util.EvalFailpoint("tikvStoreSendReqResult"); err == nil {
 		switch val.(string) {
@@ -649,7 +653,7 @@ func (h *RPCCanceller) CancelAll() {
 }
 
 func (s *RegionRequestSender) sendReqToRegion(bo *retry.Backoffer, rpcCtx *RPCContext, req *tikvrpc.Request, timeout time.Duration) (resp *tikvrpc.Response, retry bool, err error) {
-	if e := tikvrpc.SetContext(req, rpcCtx.Meta, rpcCtx.Peer); e != nil {
+	if e := tikvrpc.SetContext(bo.GetCtx(), req, rpcCtx.Meta, rpcCtx.Peer); e != nil {
 		return nil, false, errors.Trace(e)
 	}
 	// judge the store limit switch.
@@ -814,6 +818,10 @@ func (s *RegionRequestSender) onSendFail(bo *retry.Backoffer, ctx *RPCContext, e
 		defer span1.Finish()
 		bo.SetCtx(opentracing.ContextWithSpan(bo.GetCtx(), span1))
 	}
+	ctx1, span := minitrace.StartSpanWithContext(bo.GetCtx(), "tikv.onSendFail")
+	bo.SetCtx(ctx1)
+	defer span.Finish()
+
 	// If it failed because the context is cancelled by ourself, don't retry.
 	if errors.Cause(err) == context.Canceled {
 		return errors.Trace(err)
@@ -905,6 +913,10 @@ func (s *RegionRequestSender) onRegionError(bo *retry.Backoffer, ctx *RPCContext
 		defer span1.Finish()
 		bo.SetCtx(opentracing.ContextWithSpan(bo.GetCtx(), span1))
 	}
+	ctx1, span := minitrace.StartSpanWithContext(bo.GetCtx(), "tikv.onRegionError")
+	bo.SetCtx(ctx1)
+	defer span.Finish()
+
 	// Stale Read request will retry the leader or next peer on error,
 	// if txnScope is global, we will only retry the leader by using the WithLeaderOnly option,
 	// if txnScope is local, we will retry both other peers and the leader by the incresing seed.

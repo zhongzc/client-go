@@ -53,6 +53,7 @@ import (
 	"github.com/tikv/client-go/v2/tikvrpc"
 	"github.com/tikv/client-go/v2/txnkv/txnlock"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 	"go.uber.org/zap"
 )
 
@@ -349,6 +350,9 @@ func (c *twoPhaseCommitter) prewriteMutations(bo *retry.Backoffer, mutations Com
 		defer span1.Finish()
 		bo.SetCtx(opentracing.ContextWithSpan(bo.GetCtx(), span1))
 	}
+	ctx, span := minitrace.StartSpanWithContext(bo.GetCtx(), "twoPhaseCommitter.prewriteMutations")
+	bo.SetCtx(ctx)
+	defer span.Finish()
 
 	// `doActionOnMutations` will unset `useOnePC` if the mutations is splitted into multiple batches.
 	return c.doActionOnMutations(bo, actionPrewrite{}, mutations)

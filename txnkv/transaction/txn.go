@@ -59,6 +59,7 @@ import (
 	"github.com/tikv/client-go/v2/txnkv/txnsnapshot"
 	"github.com/tikv/client-go/v2/txnkv/txnutil"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 	"go.uber.org/zap"
 )
 
@@ -307,6 +308,10 @@ func (txn *KVTxn) Commit(ctx context.Context) error {
 		defer span1.Finish()
 		ctx = opentracing.ContextWithSpan(ctx, span1)
 	}
+	var span minitrace.SpanHandle
+	ctx, span = minitrace.StartSpanWithContext(ctx, "twoPhaseCommitter.prewriteMutations")
+	defer span.Finish()
+
 	defer trace.StartRegion(ctx, "CommitTxn").End()
 
 	if !txn.valid {

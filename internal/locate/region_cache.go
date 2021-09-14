@@ -57,6 +57,7 @@ import (
 	"github.com/tikv/client-go/v2/metrics"
 	"github.com/tikv/client-go/v2/tikvrpc"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 	pd "github.com/tikv/pd/client"
 	atomic2 "go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -1259,8 +1260,11 @@ func (c *RegionCache) loadRegion(bo *retry.Backoffer, key []byte, isEndKey bool)
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span1 := span.Tracer().StartSpan("loadRegion", opentracing.ChildOf(span.Context()))
 		defer span1.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span1)
+		bo.SetCtx(opentracing.ContextWithSpan(ctx, span1))
 	}
+	ctx, span := minitrace.StartSpanWithContext(bo.GetCtx(), "loadRegion")
+	bo.SetCtx(ctx)
+	defer span.Finish()
 
 	var backoffErr error
 	searchPrev := false
@@ -1317,8 +1321,12 @@ func (c *RegionCache) loadRegionByID(bo *retry.Backoffer, regionID uint64) (*Reg
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span1 := span.Tracer().StartSpan("loadRegionByID", opentracing.ChildOf(span.Context()))
 		defer span1.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span1)
+		bo.SetCtx(opentracing.ContextWithSpan(ctx, span1))
 	}
+	ctx, span := minitrace.StartSpanWithContext(bo.GetCtx(), "loadRegionByID")
+	bo.SetCtx(ctx)
+	defer span.Finish()
+
 	var backoffErr error
 	for {
 		if backoffErr != nil {
@@ -1366,8 +1374,11 @@ func (c *RegionCache) scanRegions(bo *retry.Backoffer, startKey, endKey []byte, 
 	if span := opentracing.SpanFromContext(ctx); span != nil && span.Tracer() != nil {
 		span1 := span.Tracer().StartSpan("scanRegions", opentracing.ChildOf(span.Context()))
 		defer span1.Finish()
-		ctx = opentracing.ContextWithSpan(ctx, span1)
+		bo.SetCtx(opentracing.ContextWithSpan(ctx, span1))
 	}
+	ctx, span := minitrace.StartSpanWithContext(bo.GetCtx(), "scanRegions")
+	bo.SetCtx(ctx)
+	defer span.Finish()
 
 	var backoffErr error
 	for {

@@ -47,6 +47,7 @@ import (
 	"github.com/tikv/client-go/v2/internal/retry"
 	"github.com/tikv/client-go/v2/metrics"
 	"github.com/tikv/client-go/v2/tikvrpc"
+	"github.com/tikv/minitrace-go"
 	"go.uber.org/zap"
 )
 
@@ -205,6 +206,9 @@ func (c *twoPhaseCommitter) commitMutations(bo *retry.Backoffer, mutations Commi
 		defer span1.Finish()
 		bo.SetCtx(opentracing.ContextWithSpan(bo.GetCtx(), span1))
 	}
+	ctx, span := minitrace.StartSpanWithContext(bo.GetCtx(), "twoPhaseCommitter.commitMutations")
+	bo.SetCtx(ctx)
+	defer span.Finish()
 
 	return c.doActionOnMutations(bo, actionCommit{}, mutations)
 }

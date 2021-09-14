@@ -59,6 +59,7 @@ import (
 	"github.com/tikv/client-go/v2/txnkv/txnlock"
 	"github.com/tikv/client-go/v2/txnkv/txnutil"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 	"go.uber.org/zap"
 )
 
@@ -492,6 +493,9 @@ func (s *KVSnapshot) get(ctx context.Context, bo *retry.Backoffer, k []byte) ([]
 		defer span1.Finish()
 		opentracing.ContextWithSpan(ctx, span1)
 	}
+	ctx, span := minitrace.StartSpanWithContext(bo.GetCtx(), "tikvSnapshot.get")
+	bo.SetCtx(ctx)
+	defer span.Finish()
 	failpoint.Inject("snapshot-get-cache-fail", func(_ failpoint.Value) {
 		if bo.GetCtx().Value("TestSnapshotCache") != nil {
 			panic("cache miss")
