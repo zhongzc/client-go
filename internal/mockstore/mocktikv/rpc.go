@@ -51,6 +51,7 @@ import (
 	"github.com/pingcap/parser/terror"
 	"github.com/tikv/client-go/v2/tikvrpc"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 )
 
 // For gofail injection.
@@ -647,6 +648,9 @@ func (c *RPCClient) SendRequest(ctx context.Context, addr string, req *tikvrpc.R
 		defer span1.Finish()
 		ctx = opentracing.ContextWithSpan(ctx, span1)
 	}
+	var span minitrace.SpanHandle
+	ctx, span = minitrace.StartSpanWithContext(ctx, "RPCClient.SendRequest")
+	defer span.Finish()
 
 	// increase coverage for mock tikv
 	_ = req.Type.String()

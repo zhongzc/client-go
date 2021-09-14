@@ -49,6 +49,7 @@ import (
 	"github.com/tikv/client-go/v2/internal/logutil"
 	"github.com/tikv/client-go/v2/kv"
 	"github.com/tikv/client-go/v2/util"
+	"github.com/tikv/minitrace-go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -117,6 +118,10 @@ func (b *Backoffer) Backoff(cfg *Config, err error) error {
 		defer span1.Finish()
 		opentracing.ContextWithSpan(b.ctx, span1)
 	}
+	var span minitrace.SpanHandle
+	b.ctx, span = minitrace.StartSpanWithContext(b.ctx, fmt.Sprintf("tikv.backoff.%s", cfg))
+	defer span.Finish()
+
 	return b.BackoffWithCfgAndMaxSleep(cfg, -1, err)
 }
 
